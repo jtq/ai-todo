@@ -16,6 +16,7 @@ export interface Task {
   completedAt?: IsoDateTime;
   deadline?: Deadline;
   attachments: EntityId[];
+  comments: EntityId[];
   progressTracker: ProgressTracker;
   progress: number;
   parentTaskIds: EntityId[];

@@ -9,7 +9,7 @@ export class IdRepository {
     this.database = database;
   }
 
-  next(entityType: "task" | "attachment"): { id: string; sequenceValue: number } {
+  next(entityType: "task" | "attachment" | "comment"): { id: string; sequenceValue: number } {
     const row = this.database.db.prepare("select value from id_sequence where name = 'global'").get() as
       | { value: number }
       | undefined;

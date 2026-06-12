@@ -38,13 +38,24 @@ export const openApiDocument = {
     },
     "/api/v1/tasks/{id}/attachments/order": {
       patch: { summary: "Reorder task-owned attachments", responses: { "200": { description: "Attachment list" } } }
+    },
+    "/api/v1/tasks/{id}/comments": {
+      post: { summary: "Create task-owned comment", responses: { "201": { description: "Created comment" } } }
+    },
+    "/api/v1/comments/{id}": {
+      get: { summary: "Get comment", responses: { "200": { description: "Comment" } } },
+      patch: { summary: "Update comment", responses: { "200": { description: "Updated comment" } } },
+      delete: { summary: "Delete comment", responses: { "204": { description: "Deleted comment" } } }
+    },
+    "/api/v1/tasks/{id}/comments/order": {
+      patch: { summary: "Reorder task-owned comments", responses: { "200": { description: "Comment list" } } }
     }
   },
   components: {
     schemas: {
       Task: {
         type: "object",
-        required: ["id", "title", "status", "createdAt", "attachments", "progressTracker", "progress"],
+        required: ["id", "title", "status", "createdAt", "attachments", "comments", "progressTracker", "progress"],
         properties: {
           id: { type: "string" },
           title: { type: "string" },
@@ -54,6 +65,7 @@ export const openApiDocument = {
           completedAt: { type: "string", format: "date-time" },
           deadline: { oneOf: [{ $ref: "#/components/schemas/DateDeadline" }, { $ref: "#/components/schemas/DateTimeDeadline" }] },
           attachments: { type: "array", items: { type: "string" } },
+          comments: { type: "array", items: { type: "string" } },
           progressTracker: { enum: ["computed_from_subtasks", "manual"] },
           progress: { type: "number", minimum: 0, maximum: 1 },
           parentTaskIds: { type: "array", items: { type: "string" } },
@@ -71,6 +83,18 @@ export const openApiDocument = {
           description: { type: "string" },
           url: { type: "string", format: "uri" },
           type: { type: "string" },
+          position: { type: "integer" },
+          createdAt: { type: "string", format: "date-time" },
+          updatedAt: { type: "string", format: "date-time" }
+        }
+      },
+      Comment: {
+        type: "object",
+        required: ["id", "taskId", "body", "position", "createdAt", "updatedAt"],
+        properties: {
+          id: { type: "string" },
+          taskId: { type: "string" },
+          body: { type: "string" },
           position: { type: "integer" },
           createdAt: { type: "string", format: "date-time" },
           updatedAt: { type: "string", format: "date-time" }

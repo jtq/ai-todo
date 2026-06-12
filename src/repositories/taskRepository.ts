@@ -33,7 +33,7 @@ interface TaskRow {
 export class TaskRepository {
   constructor(private readonly database: Database) {}
 
-  create(task: Omit<Task, "attachments" | "parentTaskIds" | "childTaskIds" | "blockedByTaskIds">): void {
+  create(task: Omit<Task, "attachments" | "comments" | "parentTaskIds" | "childTaskIds" | "blockedByTaskIds">): void {
     const deadline = this.toDeadlineColumns(task.deadline);
     this.database.db
       .prepare(
@@ -200,6 +200,13 @@ export class TaskRepository {
       .map((row) => (row as { id: string }).id);
   }
 
+  commentIds(taskId: string): string[] {
+    return this.database.db
+      .prepare("select id from comments where task_id = ? order by position")
+      .all(taskId)
+      .map((row) => (row as { id: string }).id);
+  }
+
   private hydrate(row: TaskRow): Task {
     return {
       id: row.id,
@@ -210,6 +217,7 @@ export class TaskRepository {
       completedAt: row.completed_at ?? undefined,
       deadline: this.fromDeadlineColumns(row),
       attachments: this.attachmentIds(row.id),
+      comments: this.commentIds(row.id),
       progressTracker: row.progress_tracker,
       progress: row.progress,
       parentTaskIds: this.parentIds(row.id),

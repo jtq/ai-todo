@@ -22,8 +22,12 @@ describe("API", () => {
       const openapi = await app.inject({ method: "GET", url: "/openapi.json" });
       expect(openapi.statusCode).toBe(200);
       expect(openapi.json().paths["/api/v1/tasks"]).toBeTruthy();
+      expect(openapi.json().paths["/api/v1/tasks/{id}/comments"]).toBeTruthy();
+      expect(openapi.json().paths["/api/v1/comments/{id}"]).toBeTruthy();
       expect(openapi.json().components.schemas.Task.properties.status.enum).toContain("on_hold");
       expect(openapi.json().components.schemas.Task.properties.status.enum).toContain("wont_do");
+      expect(openapi.json().components.schemas.Task.properties.comments).toBeTruthy();
+      expect(openapi.json().components.schemas.Comment).toBeTruthy();
     });
   });
 
@@ -155,6 +159,81 @@ describe("API", () => {
         payload: { attachmentIds: [b.json().id, other.json().id] }
       });
       expect(crossTask.statusCode).toBe(409);
+    });
+  });
+
+  it("manages task-owned comments in order", async () => {
+    await withTestApp(async (app) => {
+      const firstTask = await createTask(app, "First task");
+      const secondTask = await createTask(app, "Second task");
+      const a = await app.inject({
+        method: "POST",
+        url: `/api/v1/tasks/${firstTask.id}/comments`,
+        payload: { body: "Initial progress update" }
+      });
+      const b = await app.inject({
+        method: "POST",
+        url: `/api/v1/tasks/${firstTask.id}/comments`,
+        payload: { body: "More context" }
+      });
+      const other = await app.inject({
+        method: "POST",
+        url: `/api/v1/tasks/${secondTask.id}/comments`,
+        payload: { body: "Other task context" }
+      });
+
+      expect(a.statusCode).toBe(201);
+      expect(a.json().taskId).toBe(firstTask.id);
+      expect(b.json().position).toBe(1);
+
+      const task = await app.inject({ method: "GET", url: `/api/v1/tasks/${firstTask.id}` });
+      expect(task.json().comments).toEqual([a.json().id, b.json().id]);
+
+      const fetched = await app.inject({ method: "GET", url: `/api/v1/comments/${a.json().id}` });
+      expect(fetched.statusCode).toBe(200);
+      expect(fetched.json().body).toBe("Initial progress update");
+
+      const updated = await app.inject({
+        method: "PATCH",
+        url: `/api/v1/comments/${a.json().id}`,
+        payload: { body: "Updated progress update" }
+      });
+      expect(updated.statusCode).toBe(200);
+      expect(updated.json().body).toBe("Updated progress update");
+
+      const reordered = await app.inject({
+        method: "PATCH",
+        url: `/api/v1/tasks/${firstTask.id}/comments/order`,
+        payload: { commentIds: [b.json().id, a.json().id] }
+      });
+      expect(reordered.statusCode).toBe(200);
+      expect(reordered.json().items.map((item: { id: string }) => item.id)).toEqual([b.json().id, a.json().id]);
+
+      const duplicate = await app.inject({
+        method: "PATCH",
+        url: `/api/v1/tasks/${firstTask.id}/comments/order`,
+        payload: { commentIds: [a.json().id, a.json().id] }
+      });
+      expect(duplicate.statusCode).toBe(422);
+
+      const crossTask = await app.inject({
+        method: "PATCH",
+        url: `/api/v1/tasks/${firstTask.id}/comments/order`,
+        payload: { commentIds: [b.json().id, other.json().id] }
+      });
+      expect(crossTask.statusCode).toBe(409);
+
+      const badCreate = await app.inject({
+        method: "POST",
+        url: `/api/v1/tasks/${firstTask.id}/comments`,
+        payload: { body: "" }
+      });
+      expect(badCreate.statusCode).toBe(422);
+
+      const deleted = await app.inject({ method: "DELETE", url: `/api/v1/comments/${a.json().id}` });
+      expect(deleted.statusCode).toBe(204);
+      const missing = await app.inject({ method: "GET", url: `/api/v1/comments/${a.json().id}` });
+      expect(missing.statusCode).toBe(404);
     });
   });
 });

@@ -1,10 +1,12 @@
 import { vi } from "vitest";
 import type { Attachment } from "../domain/attachment.js";
+import type { Comment } from "../domain/comment.js";
 import type { Task, TaskListQuery } from "../domain/task.js";
 import type { Database } from "../repositories/database.js";
 import type { IdRepository } from "../repositories/idRepository.js";
 import type { TaskRepository } from "../repositories/taskRepository.js";
 import type { AttachmentRepository } from "../repositories/attachmentRepository.js";
+import type { CommentRepository } from "../repositories/commentRepository.js";
 
 export function makeTask(overrides: Partial<Task> = {}): Task {
   const id = overrides.id ?? "1";
@@ -14,6 +16,7 @@ export function makeTask(overrides: Partial<Task> = {}): Task {
     status: "todo",
     createdAt: "2026-06-05T10:00:00.000Z",
     attachments: [],
+    comments: [],
     progressTracker: "manual",
     progress: 0,
     parentTaskIds: [],
@@ -38,6 +41,19 @@ export function makeAttachment(overrides: Partial<Attachment> = {}): Attachment 
   };
 }
 
+export function makeComment(overrides: Partial<Comment> = {}): Comment {
+  const id = overrides.id ?? "C";
+  return {
+    id,
+    taskId: "1",
+    body: `Comment ${id}`,
+    position: 0,
+    createdAt: "2026-06-05T10:00:00.000Z",
+    updatedAt: "2026-06-05T10:00:00.000Z",
+    ...overrides
+  };
+}
+
 export function makeDatabaseMock(): Database {
   return {
     transaction: vi.fn(<T>(work: () => T): T => work())
@@ -47,7 +63,7 @@ export function makeDatabaseMock(): Database {
 export function makeIdRepositoryMock(ids: string[]): IdRepository {
   const queue = [...ids];
   return {
-    next: vi.fn((entityType: "task" | "attachment") => {
+    next: vi.fn((entityType: "task" | "attachment" | "comment") => {
       const id = queue.shift();
       if (!id) throw new Error("No mock ID available");
       return { id, sequenceValue: Number.parseInt(id, 36) || 1, entityType };
@@ -61,8 +77,8 @@ export class MockTaskRepository {
   parentMap = new Map<string, Set<string>>();
   blockerMap = new Map<string, Set<string>>();
 
-  create = vi.fn((task: Omit<Task, "attachments" | "parentTaskIds" | "childTaskIds" | "blockedByTaskIds">): void => {
-    this.tasks.set(task.id, makeTask({ ...task, attachments: [], parentTaskIds: [], childTaskIds: [], blockedByTaskIds: [] }));
+  create = vi.fn((task: Omit<Task, "attachments" | "comments" | "parentTaskIds" | "childTaskIds" | "blockedByTaskIds">): void => {
+    this.tasks.set(task.id, makeTask({ ...task, attachments: [], comments: [], parentTaskIds: [], childTaskIds: [], blockedByTaskIds: [] }));
   });
 
   update = vi.fn((id: string, patch: Partial<Task>): void => {
@@ -86,6 +102,7 @@ export class MockTaskRepository {
     if (!task) return undefined;
     return {
       ...task,
+      comments: this.commentIds(id),
       parentTaskIds: this.parentIds(id),
       childTaskIds: this.childIds(id),
       blockedByTaskIds: this.blockedByIds(id)
@@ -127,6 +144,7 @@ export class MockTaskRepository {
   childIds = vi.fn((parentTaskId: string): string[] => [...(this.childMap.get(parentTaskId) ?? [])].sort());
   blockedByIds = vi.fn((blockedTaskId: string): string[] => [...(this.blockerMap.get(blockedTaskId) ?? [])].sort());
   attachmentIds = vi.fn((_taskId: string): string[] => []);
+  commentIds = vi.fn((_taskId: string): string[] => []);
 
   asRepository(): TaskRepository {
     return this as unknown as TaskRepository;
@@ -173,5 +191,48 @@ export class MockAttachmentRepository {
 
   asRepository(): AttachmentRepository {
     return this as unknown as AttachmentRepository;
+  }
+}
+
+export class MockCommentRepository {
+  comments = new Map<string, Comment>();
+
+  create = vi.fn((comment: Comment): void => {
+    this.comments.set(comment.id, comment);
+  });
+
+  update = vi.fn((id: string, patch: Partial<Comment>): void => {
+    const current = this.comments.get(id);
+    if (!current) return;
+    this.comments.set(id, { ...current, ...patch });
+  });
+
+  delete = vi.fn((id: string): void => {
+    this.comments.delete(id);
+  });
+
+  findById = vi.fn((id: string): Comment | undefined => this.comments.get(id));
+
+  listForTask = vi.fn((taskId: string): Comment[] =>
+    [...this.comments.values()].filter((comment) => comment.taskId === taskId).sort((a, b) => a.position - b.position)
+  );
+
+  nextPosition = vi.fn((taskId: string): number => this.listForTask(taskId).length);
+
+  reorder = vi.fn((taskId: string, commentIds: string[]): void => {
+    commentIds.forEach((id, position) => {
+      const comment = this.comments.get(id);
+      if (comment && comment.taskId === taskId) this.comments.set(id, { ...comment, position });
+    });
+  });
+
+  normalizePositions = vi.fn((taskId: string): void => {
+    this.listForTask(taskId).forEach((comment, position) => {
+      this.comments.set(comment.id, { ...comment, position });
+    });
+  });
+
+  asRepository(): CommentRepository {
+    return this as unknown as CommentRepository;
   }
 }

@@ -7,16 +7,20 @@ import { Database } from "./repositories/database.js";
 import { IdRepository } from "./repositories/idRepository.js";
 import { TaskRepository } from "./repositories/taskRepository.js";
 import { AttachmentRepository } from "./repositories/attachmentRepository.js";
+import { CommentRepository } from "./repositories/commentRepository.js";
 import { TaskService } from "./services/taskService.js";
 import { AttachmentService } from "./services/attachmentService.js";
+import { CommentService } from "./services/commentService.js";
 import { registerTaskRoutes } from "./routes/tasks.js";
 import { registerAttachmentRoutes } from "./routes/attachments.js";
+import { registerCommentRoutes } from "./routes/comments.js";
 import { openApiDocument } from "./openapi.js";
 
 export interface AppContext {
   database: Database;
   tasks: TaskService;
   attachments: AttachmentService;
+  comments: CommentService;
 }
 
 export async function buildApp(config: AppConfig): Promise<{ app: FastifyInstance; context: AppContext }> {
@@ -25,8 +29,10 @@ export async function buildApp(config: AppConfig): Promise<{ app: FastifyInstanc
   const ids = new IdRepository(database);
   const taskRepository = new TaskRepository(database);
   const attachmentRepository = new AttachmentRepository(database);
+  const commentRepository = new CommentRepository(database);
   const tasks = new TaskService(database, ids, taskRepository);
   const attachments = new AttachmentService(database, ids, attachmentRepository, taskRepository);
+  const comments = new CommentService(database, ids, commentRepository, taskRepository);
 
   await app.register(swagger, {
     openapi: {
@@ -57,12 +63,13 @@ export async function buildApp(config: AppConfig): Promise<{ app: FastifyInstanc
 
   registerTaskRoutes(app, tasks);
   registerAttachmentRoutes(app, attachments);
+  registerCommentRoutes(app, comments);
 
   app.addHook("onClose", async () => {
     database.close();
   });
 
-  return { app, context: { database, tasks, attachments } };
+  return { app, context: { database, tasks, attachments, comments } };
 }
 
 export function parseWithSchema<T extends z.ZodTypeAny>(schema: T, value: unknown): z.output<T> {
