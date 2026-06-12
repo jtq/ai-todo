@@ -33,7 +33,7 @@ interface TaskRow {
 export class TaskRepository {
   constructor(private readonly database: Database) {}
 
-  create(task: Omit<Task, "attachments" | "comments" | "parentTaskIds" | "childTaskIds" | "blockedByTaskIds">): void {
+  create(task: Omit<Task, "attachments" | "comments" | "parentTaskId" | "childTaskIds" | "blockedByTaskIds">): void {
     const deadline = this.toDeadlineColumns(task.deadline);
     this.database.db
       .prepare(
@@ -143,6 +143,7 @@ export class TaskRepository {
   }
 
   addRelationship(parentTaskId: string, childTaskId: string): void {
+    this.database.db.prepare("delete from task_relationships where child_task_id = ?").run(childTaskId);
     this.database.db
       .prepare("insert or ignore into task_relationships(parent_task_id, child_task_id) values (?, ?)")
       .run(parentTaskId, childTaskId);
@@ -200,6 +201,13 @@ export class TaskRepository {
       .map((row) => (row as { id: string }).id);
   }
 
+  parentId(childTaskId: string): string | undefined {
+    const row = this.database.db
+      .prepare("select parent_task_id as id from task_relationships where child_task_id = ?")
+      .get(childTaskId) as { id: string } | undefined;
+    return row?.id;
+  }
+
   commentIds(taskId: string): string[] {
     return this.database.db
       .prepare("select id from comments where task_id = ? order by position")
@@ -220,7 +228,7 @@ export class TaskRepository {
       comments: this.commentIds(row.id),
       progressTracker: row.progress_tracker,
       progress: row.progress,
-      parentTaskIds: this.parentIds(row.id),
+      parentTaskId: this.parentId(row.id),
       childTaskIds: this.childIds(row.id),
       blockedByTaskIds: this.blockedByIds(row.id),
       createdBy: row.created_by ?? undefined,

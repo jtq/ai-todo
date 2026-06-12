@@ -140,7 +140,7 @@ interface Task {
   attachments: EntityId[];
   progressTracker: ProgressTracker;
   progress: number;
-  parentTaskIds: EntityId[];
+  parentTaskId?: EntityId;
   childTaskIds: EntityId[];
   blockedByTaskIds: EntityId[];
   createdBy?: string;
@@ -163,7 +163,7 @@ Task field rules:
 - `progressTracker` is either `computed_from_subtasks` or `manual`.
 - `progress` is a floating point value in the inclusive range `0` to `1`.
 - `progress` defaults to `0`.
-- `parentTaskIds` references zero or more parent tasks.
+- `parentTaskId` optionally references the single parent task of this task.
 - `childTaskIds` references zero or more child tasks.
 - `blockedByTaskIds` references zero or more tasks currently blocking this task.
 
@@ -172,6 +172,8 @@ Relationship rules:
 - Parent and child references are reciprocal.
 - Adding a child task to a parent must also add the parent to the child.
 - Adding a parent task to a child must also add the child to the parent.
+- A task may have at most one parent task.
+- Setting a new parent for a task replaces any existing parent relationship for that task.
 - Removing either side of a parent/child relationship must update both tasks.
 - Parent/child relationships must not create cycles.
 - A task cannot be its own parent or child.
@@ -385,7 +387,7 @@ interface CreateTaskRequest {
   deadline?: Deadline;
   progressTracker?: ProgressTracker;
   progress?: number;
-  parentTaskIds?: EntityId[];
+  parentTaskId?: EntityId;
   childTaskIds?: EntityId[];
   blockedByTaskIds?: EntityId[];
 }
@@ -438,8 +440,8 @@ status_asc
 ### 8.3 Task Relationships
 
 ```http
-PUT /api/v1/tasks/:id/parents/:parentTaskId
-DELETE /api/v1/tasks/:id/parents/:parentTaskId
+PUT /api/v1/tasks/:id/parent/:parentTaskId
+DELETE /api/v1/tasks/:id/parent/:parentTaskId
 
 PUT /api/v1/tasks/:id/children/:childTaskId
 DELETE /api/v1/tasks/:id/children/:childTaskId
@@ -454,6 +456,7 @@ Relationship endpoints must:
 - Reject self-relationships.
 - Reject parent/child cycles with `409 Conflict`.
 - Update reciprocal parent/child references.
+- Setting a parent replaces any previous parent for that task.
 - Recompute affected progress values when child relationships change.
 
 ### 8.4 Attachments
@@ -603,6 +606,8 @@ src/
     migrations/
       001_initial_schema.ts
       002_add_on_hold_and_wont_do_statuses.ts
+      003_add_task_comments.ts
+      004_enforce_single_parent_task.ts
 
   services/
     attachmentService.ts

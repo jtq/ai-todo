@@ -19,9 +19,9 @@ export class TaskService {
 
   create(input: CreateTaskInput): Task {
     return this.database.transaction(() => {
-      this.ensureExistingTasks([...input.parentTaskIds, ...input.childTaskIds, ...input.blockedByTaskIds]);
+      this.ensureExistingTasks([...(input.parentTaskId ? [input.parentTaskId] : []), ...input.childTaskIds, ...input.blockedByTaskIds]);
       const { id } = this.ids.next("task");
-      this.ensureNoSelfReferences(id, input.parentTaskIds, input.childTaskIds, input.blockedByTaskIds);
+      this.ensureNoSelfReferences(id, input.parentTaskId, input.childTaskIds, input.blockedByTaskIds);
       const timestamp = nowUtc();
       const completedAt = input.status === "completed" ? timestamp : undefined;
       this.tasks.create({
@@ -36,7 +36,7 @@ export class TaskService {
         progress: input.status === "completed" && input.progressTracker === "manual" ? input.progress || 1 : input.progress,
         updatedAt: timestamp
       });
-      for (const parentId of input.parentTaskIds) this.addRelationship(parentId, id, false);
+      if (input.parentTaskId) this.addRelationship(input.parentTaskId, id, false);
       for (const childId of input.childTaskIds) this.addRelationship(id, childId, false);
       if (input.blockedByTaskIds.length) this.tasks.setBlockers(id, input.blockedByTaskIds);
       this.progress.recomputeIfComputed(id);
@@ -149,8 +149,12 @@ export class TaskService {
     this.ensureExistingTasks([parentTaskId, childTaskId]);
     if (parentTaskId === childTaskId) throw conflict("A task cannot be its own parent or child");
     if (this.wouldCreateCycle(parentTaskId, childTaskId)) throw conflict("Parent/child relationship would create a cycle");
+    const previousParentId = this.tasks.parentIds(childTaskId)[0];
     this.tasks.addRelationship(parentTaskId, childTaskId);
     if (recompute) this.progress.recomputeTaskAndAncestors(parentTaskId);
+    if (recompute && previousParentId && previousParentId !== parentTaskId) {
+      this.progress.recomputeTaskAndAncestors(previousParentId);
+    }
   }
 
   private wouldCreateCycle(parentTaskId: string, childTaskId: string): boolean {
@@ -172,8 +176,8 @@ export class TaskService {
     }
   }
 
-  private ensureNoSelfReferences(id: string, parents: string[], children: string[], blockers: string[]): void {
-    if (parents.includes(id) || children.includes(id)) throw conflict("A task cannot be its own parent or child");
+  private ensureNoSelfReferences(id: string, parentId: string | undefined, children: string[], blockers: string[]): void {
+    if (parentId === id || children.includes(id)) throw conflict("A task cannot be its own parent or child");
     if (blockers.includes(id)) throw conflict("A task cannot block itself");
   }
 }

@@ -19,7 +19,7 @@ export interface Task {
   comments: EntityId[];
   progressTracker: ProgressTracker;
   progress: number;
-  parentTaskIds: EntityId[];
+  parentTaskId?: EntityId;
   childTaskIds: EntityId[];
   blockedByTaskIds: EntityId[];
   createdBy?: string;
@@ -33,7 +33,7 @@ export interface CreateTaskInput {
   deadline?: Deadline;
   progressTracker: ProgressTracker;
   progress: number;
-  parentTaskIds: EntityId[];
+  parentTaskId?: EntityId;
   childTaskIds: EntityId[];
   blockedByTaskIds: EntityId[];
 }

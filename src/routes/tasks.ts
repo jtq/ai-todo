@@ -35,12 +35,12 @@ export function registerTaskRoutes(app: FastifyInstance, tasks: TaskService): vo
     await sendNoContent(reply);
   });
 
-  app.put("/api/v1/tasks/:id/parents/:parentTaskId", async (request) => {
+  app.put("/api/v1/tasks/:id/parent/:parentTaskId", async (request) => {
     const params = parseWithSchema(relationParamsSchema, request.params);
     return tasks.addParent(params.id, params.parentTaskId!);
   });
 
-  app.delete("/api/v1/tasks/:id/parents/:parentTaskId", async (request) => {
+  app.delete("/api/v1/tasks/:id/parent/:parentTaskId", async (request) => {
     const params = parseWithSchema(relationParamsSchema, request.params);
     return tasks.removeParent(params.id, params.parentTaskId!);
   });

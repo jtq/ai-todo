@@ -19,7 +19,7 @@ export function makeTask(overrides: Partial<Task> = {}): Task {
     comments: [],
     progressTracker: "manual",
     progress: 0,
-    parentTaskIds: [],
+    parentTaskId: undefined,
     childTaskIds: [],
     blockedByTaskIds: [],
     updatedAt: "2026-06-05T10:00:00.000Z",
@@ -77,8 +77,8 @@ export class MockTaskRepository {
   parentMap = new Map<string, Set<string>>();
   blockerMap = new Map<string, Set<string>>();
 
-  create = vi.fn((task: Omit<Task, "attachments" | "comments" | "parentTaskIds" | "childTaskIds" | "blockedByTaskIds">): void => {
-    this.tasks.set(task.id, makeTask({ ...task, attachments: [], comments: [], parentTaskIds: [], childTaskIds: [], blockedByTaskIds: [] }));
+  create = vi.fn((task: Omit<Task, "attachments" | "comments" | "parentTaskId" | "childTaskIds" | "blockedByTaskIds">): void => {
+    this.tasks.set(task.id, makeTask({ ...task, attachments: [], comments: [], parentTaskId: undefined, childTaskIds: [], blockedByTaskIds: [] }));
   });
 
   update = vi.fn((id: string, patch: Partial<Task>): void => {
@@ -103,7 +103,7 @@ export class MockTaskRepository {
     return {
       ...task,
       comments: this.commentIds(id),
-      parentTaskIds: this.parentIds(id),
+      parentTaskId: this.parentIds(id)[0],
       childTaskIds: this.childIds(id),
       blockedByTaskIds: this.blockedByIds(id)
     };
@@ -116,8 +116,12 @@ export class MockTaskRepository {
   }));
 
   addRelationship = vi.fn((parentTaskId: string, childTaskId: string): void => {
+    const previousParents = this.parentMap.get(childTaskId);
+    if (previousParents) {
+      for (const previousParentId of previousParents) this.childMap.get(previousParentId)?.delete(childTaskId);
+    }
+    this.parentMap.set(childTaskId, new Set());
     if (!this.childMap.has(parentTaskId)) this.childMap.set(parentTaskId, new Set());
-    if (!this.parentMap.has(childTaskId)) this.parentMap.set(childTaskId, new Set());
     this.childMap.get(parentTaskId)!.add(childTaskId);
     this.parentMap.get(childTaskId)!.add(parentTaskId);
   });

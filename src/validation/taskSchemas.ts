@@ -15,7 +15,7 @@ export const createTaskSchema = z
     deadline: deadlineSchema.optional(),
     progressTracker: progressTrackerSchema.default("manual"),
     progress: z.number().min(0).max(1).optional(),
-    parentTaskIds: z.array(entityIdSchema).default([]),
+    parentTaskId: entityIdSchema.optional(),
     childTaskIds: z.array(entityIdSchema).default([]),
     blockedByTaskIds: z.array(entityIdSchema).default([])
   })
@@ -32,7 +32,6 @@ export const createTaskSchema = z
   .transform((value) => ({
     ...value,
     progress: value.progressTracker === "manual" ? (value.progress ?? 0) : 0,
-    parentTaskIds: [...new Set(value.parentTaskIds)],
     childTaskIds: [...new Set(value.childTaskIds)],
     blockedByTaskIds: [...new Set(value.blockedByTaskIds)]
   }));

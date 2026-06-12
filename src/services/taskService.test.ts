@@ -37,7 +37,7 @@ describe("TaskService", () => {
       status: "completed",
       progressTracker: "manual",
       progress: 0,
-      parentTaskIds: [],
+      parentTaskId: undefined,
       childTaskIds: [],
       blockedByTaskIds: []
     });
@@ -59,7 +59,7 @@ describe("TaskService", () => {
         status: "todo",
         progressTracker: "manual",
         progress: 0,
-        parentTaskIds: ["missing"],
+        parentTaskId: "missing",
         childTaskIds: [],
         blockedByTaskIds: []
       });
@@ -79,7 +79,7 @@ describe("TaskService", () => {
         status: "todo",
         progressTracker: "manual",
         progress: 0,
-        parentTaskIds: ["1"],
+        parentTaskId: "1",
         childTaskIds: [],
         blockedByTaskIds: []
       });
@@ -153,12 +153,26 @@ describe("TaskService", () => {
     taskRepo.tasks.set("child", makeTask({ id: "child" }));
 
     const child = service.addParent("child", "parent");
-    expect(child.parentTaskIds).toEqual(["parent"]);
+    expect(child.parentTaskId).toBe("parent");
     expect(service.get("parent").childTaskIds).toEqual(["child"]);
 
     const detached = service.removeParent("child", "parent");
-    expect(detached.parentTaskIds).toEqual([]);
+    expect(detached.parentTaskId).toBeUndefined();
     expect(service.get("parent").childTaskIds).toEqual([]);
+  });
+
+  it("replaces an existing parent when a new parent is set", () => {
+    const { taskRepo, service } = makeService();
+    taskRepo.tasks.set("old", makeTask({ id: "old", progressTracker: "computed_from_subtasks" }));
+    taskRepo.tasks.set("new", makeTask({ id: "new", progressTracker: "computed_from_subtasks" }));
+    taskRepo.tasks.set("child", makeTask({ id: "child" }));
+    service.addParent("child", "old");
+
+    const child = service.addParent("child", "new");
+
+    expect(child.parentTaskId).toBe("new");
+    expect(service.get("old").childTaskIds).toEqual([]);
+    expect(service.get("new").childTaskIds).toEqual(["child"]);
   });
 
   it("throws not_found for relationship operations with missing tasks", () => {

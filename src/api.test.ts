@@ -24,10 +24,25 @@ describe("API", () => {
       expect(openapi.json().paths["/api/v1/tasks"]).toBeTruthy();
       expect(openapi.json().paths["/api/v1/tasks/{id}/comments"]).toBeTruthy();
       expect(openapi.json().paths["/api/v1/comments/{id}"]).toBeTruthy();
-      expect(openapi.json().components.schemas.Task.properties.status.enum).toContain("on_hold");
-      expect(openapi.json().components.schemas.Task.properties.status.enum).toContain("wont_do");
+      expect(openapi.json().components.schemas.TaskStatus.enum).toContain("on_hold");
+      expect(openapi.json().components.schemas.TaskStatus.enum).toContain("wont_do");
       expect(openapi.json().components.schemas.Task.properties.comments).toBeTruthy();
       expect(openapi.json().components.schemas.Comment).toBeTruthy();
+      expect(openapi.json().paths["/api/v1/tasks"].post.requestBody.content["application/json"].schema.$ref).toBe(
+        "#/components/schemas/CreateTaskRequest"
+      );
+      expect(openapi.json().paths["/api/v1/tasks/{id}"].patch.requestBody.content["application/json"].example.status).toBe(
+        "in_progress"
+      );
+      expect(
+        openapi.json().paths["/api/v1/tasks/{id}/attachments/order"].patch.requestBody.content["application/json"].schema.$ref
+      ).toBe("#/components/schemas/ReorderTaskAttachmentsRequest");
+      expect(openapi.json().paths["/api/v1/tasks/{id}/comments"].post.requestBody.content["application/json"].example.body).toBeTruthy();
+      expect(
+        openapi.json().paths["/api/v1/tasks/{id}/comments/order"].patch.requestBody.content["application/json"].schema.$ref
+      ).toBe("#/components/schemas/ReorderTaskCommentsRequest");
+      expect(openapi.json().components.schemas.CreateAttachmentRequest.required).toEqual(["description", "url"]);
+      expect(openapi.json().components.schemas.CreateCommentRequest.required).toEqual(["body"]);
     });
   });
 
@@ -99,7 +114,7 @@ describe("API", () => {
       expect(linked.json().childTaskIds).toEqual([child.id]);
 
       const childResponse = await app.inject({ method: "GET", url: `/api/v1/tasks/${child.id}` });
-      expect(childResponse.json().parentTaskIds).toEqual([parent.id]);
+      expect(childResponse.json().parentTaskId).toBe(parent.id);
 
       const cycle = await app.inject({ method: "PUT", url: `/api/v1/tasks/${child.id}/children/${parent.id}` });
       expect(cycle.statusCode).toBe(409);
@@ -159,6 +174,27 @@ describe("API", () => {
         payload: { attachmentIds: [b.json().id, other.json().id] }
       });
       expect(crossTask.statusCode).toBe(409);
+    });
+  });
+
+  it("allows only one parent task and replaces the previous parent", async () => {
+    await withTestApp(async (app) => {
+      const oldParent = await createTask(app, "Old parent");
+      const newParent = await createTask(app, "New parent");
+      const child = await createTask(app, "Child");
+
+      const first = await app.inject({ method: "PUT", url: `/api/v1/tasks/${child.id}/parent/${oldParent.id}` });
+      expect(first.statusCode).toBe(200);
+      expect(first.json().parentTaskId).toBe(oldParent.id);
+
+      const second = await app.inject({ method: "PUT", url: `/api/v1/tasks/${child.id}/parent/${newParent.id}` });
+      expect(second.statusCode).toBe(200);
+      expect(second.json().parentTaskId).toBe(newParent.id);
+
+      const oldParentResponse = await app.inject({ method: "GET", url: `/api/v1/tasks/${oldParent.id}` });
+      expect(oldParentResponse.json().childTaskIds).toEqual([]);
+      const newParentResponse = await app.inject({ method: "GET", url: `/api/v1/tasks/${newParent.id}` });
+      expect(newParentResponse.json().childTaskIds).toEqual([child.id]);
     });
   });
 
