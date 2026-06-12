@@ -22,6 +22,8 @@ describe("API", () => {
       const openapi = await app.inject({ method: "GET", url: "/openapi.json" });
       expect(openapi.statusCode).toBe(200);
       expect(openapi.json().paths["/api/v1/tasks"]).toBeTruthy();
+      expect(openapi.json().components.schemas.Task.properties.status.enum).toContain("on_hold");
+      expect(openapi.json().components.schemas.Task.properties.status.enum).toContain("wont_do");
     });
   });
 
@@ -60,6 +62,26 @@ describe("API", () => {
         payload: { title: "Bad time", deadline: { kind: "datetime", datetime: "2026-06-03T10:30:00" } }
       });
       expect(response.statusCode).toBe(422);
+    });
+  });
+
+  it("supports on_hold and wont_do task statuses", async () => {
+    await withTestApp(async (app) => {
+      const held = await createTask(app, "Paused", { status: "on_hold" });
+      expect(held.status).toBe("on_hold");
+
+      const wontDo = await app.inject({
+        method: "PATCH",
+        url: `/api/v1/tasks/${held.id}`,
+        payload: { status: "wont_do" }
+      });
+      expect(wontDo.statusCode).toBe(200);
+      expect(wontDo.json().status).toBe("wont_do");
+
+      const list = await app.inject({ method: "GET", url: "/api/v1/tasks?status=wont_do" });
+      expect(list.statusCode).toBe(200);
+      expect(list.json().items).toHaveLength(1);
+      expect(list.json().items[0].status).toBe("wont_do");
     });
   });
 

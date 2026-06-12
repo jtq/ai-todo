@@ -2,7 +2,7 @@ import { z } from "zod";
 import { assertDateOnly, assertUtcDateTime } from "../domain/datetime.js";
 
 export const entityIdSchema = z.string().min(1);
-export const taskStatusSchema = z.enum(["draft", "todo", "in_progress", "completed"]);
+export const taskStatusSchema = z.enum(["draft", "todo", "in_progress", "on_hold", "completed", "wont_do"]);
 export const progressTrackerSchema = z.enum(["computed_from_subtasks", "manual"]);
 
 export const utcDateTimeSchema = z.string().superRefine((value, ctx) => {

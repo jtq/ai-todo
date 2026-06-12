@@ -49,7 +49,7 @@ export const openApiDocument = {
           id: { type: "string" },
           title: { type: "string" },
           description: { type: "string" },
-          status: { enum: ["draft", "todo", "in_progress", "completed"] },
+          status: { enum: ["draft", "todo", "in_progress", "on_hold", "completed", "wont_do"] },
           createdAt: { type: "string", format: "date-time" },
           completedAt: { type: "string", format: "date-time" },
           deadline: { oneOf: [{ $ref: "#/components/schemas/DateDeadline" }, { $ref: "#/components/schemas/DateTimeDeadline" }] },

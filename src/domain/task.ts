@@ -2,7 +2,7 @@ export type EntityId = string;
 export type IsoDateTime = string;
 export type IsoDate = string;
 
-export type TaskStatus = "draft" | "todo" | "in_progress" | "completed";
+export type TaskStatus = "draft" | "todo" | "in_progress" | "on_hold" | "completed" | "wont_do";
 export type ProgressTracker = "computed_from_subtasks" | "manual";
 
 export type Deadline = { kind: "date"; date: IsoDate } | { kind: "datetime"; datetime: IsoDateTime };

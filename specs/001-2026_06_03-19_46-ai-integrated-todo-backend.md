@@ -125,7 +125,7 @@ Date-only deadlines represent calendar dates without a time component. Date-only
 ### 5.2 Task
 
 ```ts
-type TaskStatus = "draft" | "todo" | "in_progress" | "completed";
+type TaskStatus = "draft" | "todo" | "in_progress" | "on_hold" | "completed" | "wont_do";
 
 type ProgressTracker = "computed_from_subtasks" | "manual";
 
@@ -153,7 +153,9 @@ Task field rules:
 - `id` is generated automatically.
 - `title` is required plain text.
 - `description` is optional markdown.
-- `status` must be one of `draft`, `todo`, `in_progress`, or `completed`.
+- `status` must be one of `draft`, `todo`, `in_progress`, `on_hold`, `completed`, or `wont_do`.
+- `on_hold` represents the display status "On hold".
+- `wont_do` represents the display status "Won't do".
 - `createdAt` defaults to the current server time in UTC.
 - `completedAt` is optional.
 - `deadline` is optional and may be date-only or datetime.
@@ -279,7 +281,7 @@ create table tasks (
   id text primary key references entities(id) on delete cascade,
   title text not null,
   description text,
-  status text not null check (status in ('draft', 'todo', 'in_progress', 'completed')),
+  status text not null check (status in ('draft', 'todo', 'in_progress', 'on_hold', 'completed', 'wont_do')),
   created_at text not null,
   completed_at text,
   deadline_kind text check (deadline_kind in ('date', 'datetime')),
@@ -598,6 +600,9 @@ src/
     database.ts
     idRepository.ts
     taskRepository.ts
+    migrations/
+      001_initial_schema.ts
+      002_add_on_hold_and_wont_do_statuses.ts
 
   services/
     attachmentService.ts

@@ -136,6 +136,17 @@ describe("TaskService", () => {
     expect(taskRepo.update).toHaveBeenCalledWith("1", expect.objectContaining({ completedAt: null }));
   });
 
+  it("allows transitions to on_hold and wont_do", () => {
+    const { taskRepo, service } = makeService();
+    taskRepo.tasks.set("1", makeTask({ id: "1", status: "todo" }));
+
+    const onHold = service.update("1", { status: "on_hold" });
+    expect(onHold.status).toBe("on_hold");
+
+    const wontDo = service.update("1", { status: "wont_do" });
+    expect(wontDo.status).toBe("wont_do");
+  });
+
   it("adds and removes parent relationships reciprocally", () => {
     const { taskRepo, service } = makeService();
     taskRepo.tasks.set("parent", makeTask({ id: "parent" }));
