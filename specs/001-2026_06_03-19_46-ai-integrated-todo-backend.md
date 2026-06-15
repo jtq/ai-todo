@@ -241,6 +241,8 @@ When `progressTracker` is `computed_from_subtasks`:
 - If the task has child tasks, progress is the average progress of direct child tasks.
 - Completed child tasks count as progress `1`.
 - Progress changes to a child task must update computed ancestors recursively.
+- Switching a task from `manual` to `computed_from_subtasks` must ignore the previous manual `progress` value and immediately recompute `progress` before returning the updated task.
+- Switching a task to `computed_from_subtasks` must never write a null or otherwise invalid value to the persisted `progress` field.
 
 Initial formula:
 
@@ -656,6 +658,7 @@ Automated tests must cover:
 - Blocked-by relationship validation
 - Manual progress updates
 - Computed progress updates
+- Manual-to-computed progress tracker transitions through both service and API paths
 - Recursive parent progress updates
 - Date-only deadlines
 - Datetime deadlines

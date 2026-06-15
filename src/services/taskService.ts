@@ -77,7 +77,7 @@ export class TaskService {
       if (input.status && input.status !== "completed" && input.completedAt === undefined) {
         patch.completedAt = null;
       }
-      if (input.progressTracker === "computed_from_subtasks") patch.progress = undefined;
+      if (input.progressTracker === "computed_from_subtasks") delete patch.progress;
       if (input.status === "completed" && nextTracker === "manual" && input.progress === undefined) patch.progress = 1;
       delete patch.blockedByTaskIds;
       this.tasks.update(id, patch);

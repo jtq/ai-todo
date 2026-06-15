@@ -136,6 +136,22 @@ describe("API", () => {
     });
   });
 
+  it("switches manual tasks to computed progress through the API", async () => {
+    await withTestApp(async (app) => {
+      const task = await createTask(app, "Manual parent", { progressTracker: "manual", progress: 0.5 });
+
+      const updated = await app.inject({
+        method: "PATCH",
+        url: `/api/v1/tasks/${task.id}`,
+        payload: { progressTracker: "computed_from_subtasks" }
+      });
+
+      expect(updated.statusCode).toBe(200);
+      expect(updated.json().progressTracker).toBe("computed_from_subtasks");
+      expect(updated.json().progress).toBe(0);
+    });
+  });
+
   it("manages task-owned attachments in order", async () => {
     await withTestApp(async (app) => {
       const firstTask = await createTask(app, "First task");

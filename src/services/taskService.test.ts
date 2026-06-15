@@ -101,6 +101,18 @@ describe("TaskService", () => {
     }
   });
 
+  it("switches a manual task to computed progress without clearing progress to null", () => {
+    const { taskRepo, service } = makeService();
+    taskRepo.tasks.set("1", makeTask({ id: "1", progressTracker: "manual", progress: 0.5 }));
+
+    const updated = service.update("1", { progressTracker: "computed_from_subtasks" });
+
+    expect(updated.progressTracker).toBe("computed_from_subtasks");
+    const [, patch] = taskRepo.update.mock.calls[0];
+    expect(patch).toEqual(expect.objectContaining({ progressTracker: "computed_from_subtasks" }));
+    expect(patch).not.toHaveProperty("progress");
+  });
+
   it("throws conflict when a task is updated to block itself", () => {
     const { taskRepo, service } = makeService();
     taskRepo.tasks.set("1", makeTask({ id: "1" }));
