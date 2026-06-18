@@ -35,6 +35,7 @@ describe("TaskService", () => {
     const created = service.create({
       title: "Done",
       status: "completed",
+      urgency: "medium",
       progressTracker: "manual",
       progress: 0,
       parentTaskId: undefined,
@@ -57,6 +58,7 @@ describe("TaskService", () => {
       service.create({
         title: "Child",
         status: "todo",
+        urgency: "medium",
         progressTracker: "manual",
         progress: 0,
         parentTaskId: "missing",
@@ -77,6 +79,7 @@ describe("TaskService", () => {
       service.create({
         title: "Self parent",
         status: "todo",
+        urgency: "medium",
         progressTracker: "manual",
         progress: 0,
         parentTaskId: "1",
@@ -157,6 +160,16 @@ describe("TaskService", () => {
 
     const wontDo = service.update("1", { status: "wont_do" });
     expect(wontDo.status).toBe("wont_do");
+  });
+
+  it("updates task urgency", () => {
+    const { taskRepo, service } = makeService();
+    taskRepo.tasks.set("1", makeTask({ id: "1", urgency: "medium" }));
+
+    const updated = service.update("1", { urgency: "critical" });
+
+    expect(updated.urgency).toBe("critical");
+    expect(taskRepo.update).toHaveBeenCalledWith("1", expect.objectContaining({ urgency: "critical" }));
   });
 
   it("adds and removes parent relationships reciprocally", () => {

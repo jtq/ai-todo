@@ -29,6 +29,7 @@ export class TaskService {
         title: input.title,
         description: input.description,
         status: input.status,
+        urgency: input.urgency,
         createdAt: timestamp,
         completedAt,
         deadline: input.deadline,

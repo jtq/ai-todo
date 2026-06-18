@@ -14,6 +14,7 @@ export function makeTask(overrides: Partial<Task> = {}): Task {
     id,
     title: `Task ${id}`,
     status: "todo",
+    urgency: "medium",
     createdAt: "2026-06-05T10:00:00.000Z",
     attachments: [],
     comments: [],

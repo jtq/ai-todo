@@ -127,6 +127,8 @@ Date-only deadlines represent calendar dates without a time component. Date-only
 ```ts
 type TaskStatus = "draft" | "todo" | "in_progress" | "on_hold" | "completed" | "wont_do";
 
+type TaskUrgency = "critical" | "urgent" | "medium" | "low" | "whenever";
+
 type ProgressTracker = "computed_from_subtasks" | "manual";
 
 interface Task {
@@ -134,6 +136,7 @@ interface Task {
   title: string;
   description?: string;
   status: TaskStatus;
+  urgency: TaskUrgency;
   createdAt: IsoDateTime;
   completedAt?: IsoDateTime;
   deadline?: Deadline;
@@ -156,6 +159,9 @@ Task field rules:
 - `status` must be one of `draft`, `todo`, `in_progress`, `on_hold`, `completed`, or `wont_do`.
 - `on_hold` represents the display status "On hold".
 - `wont_do` represents the display status "Won't do".
+- `urgency` must be one of `critical`, `urgent`, `medium`, `low`, or `whenever`.
+- The urgency display labels are, in descending urgency order: "Critical", "Urgent", "Medium", "Low", and "Whenever".
+- `urgency` defaults to `medium`.
 - `createdAt` defaults to the current server time in UTC.
 - `completedAt` is optional.
 - `deadline` is optional and may be date-only or datetime.
@@ -286,6 +292,7 @@ create table tasks (
   title text not null,
   description text,
   status text not null check (status in ('draft', 'todo', 'in_progress', 'on_hold', 'completed', 'wont_do')),
+  urgency text not null default 'medium' check (urgency in ('critical', 'urgent', 'medium', 'low', 'whenever')),
   created_at text not null,
   completed_at text,
   deadline_kind text check (deadline_kind in ('date', 'datetime')),
@@ -333,6 +340,7 @@ Suggested indexes:
 
 ```sql
 create index idx_tasks_status on tasks(status, id);
+create index idx_tasks_urgency on tasks(urgency, id);
 create index idx_tasks_created_at on tasks(created_at, id);
 create index idx_tasks_deadline_date on tasks(deadline_date, id);
 create index idx_tasks_deadline_datetime on tasks(deadline_datetime, id);
@@ -386,6 +394,7 @@ interface CreateTaskRequest {
   title: string;
   description?: string;
   status?: TaskStatus;
+  urgency?: TaskUrgency;
   deadline?: Deadline;
   progressTracker?: ProgressTracker;
   progress?: number;
@@ -402,6 +411,7 @@ interface UpdateTaskRequest {
   title?: string;
   description?: string | null;
   status?: TaskStatus;
+  urgency?: TaskUrgency;
   completedAt?: IsoDateTime | null;
   deadline?: Deadline | null;
   progressTracker?: ProgressTracker;
@@ -414,6 +424,7 @@ Task list query parameters:
 
 ```text
 status
+urgency
 parentTaskId
 childTaskId
 blockedByTaskId
@@ -437,6 +448,8 @@ deadline_asc
 deadline_desc
 title_asc
 status_asc
+urgency_asc
+urgency_desc
 ```
 
 ### 8.3 Task Relationships
@@ -610,6 +623,7 @@ src/
       002_add_on_hold_and_wont_do_statuses.ts
       003_add_task_comments.ts
       004_enforce_single_parent_task.ts
+      005_add_task_urgency.ts
 
   services/
     attachmentService.ts
@@ -644,6 +658,7 @@ Automated tests must cover:
 - Task retrieval
 - Task updates
 - Task deletion
+- Task urgency defaults, updates, filtering, and urgency-order sorting
 - Attachment creation
 - Attachment URL validation, including `file://` local file URLs
 - Attachment retrieval
@@ -683,6 +698,7 @@ The implementation is acceptable when:
 - Parent/child task relationships remain reciprocal.
 - Parent/child cycles are rejected.
 - Blocking relationships are validated.
+- Task urgency is exposed through create, retrieve, update, and list APIs.
 - Manual progress works.
 - Computed progress works.
 - Date-only deadlines and datetime deadlines are both supported.

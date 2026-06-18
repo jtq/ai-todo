@@ -26,7 +26,9 @@ describe("API", () => {
       expect(openapi.json().paths["/api/v1/comments/{id}"]).toBeTruthy();
       expect(openapi.json().components.schemas.TaskStatus.enum).toContain("on_hold");
       expect(openapi.json().components.schemas.TaskStatus.enum).toContain("wont_do");
+      expect(openapi.json().components.schemas.TaskUrgency.enum).toEqual(["critical", "urgent", "medium", "low", "whenever"]);
       expect(openapi.json().components.schemas.Task.properties.comments).toBeTruthy();
+      expect(openapi.json().components.schemas.Task.properties.urgency).toBeTruthy();
       expect(openapi.json().components.schemas.Comment).toBeTruthy();
       expect(openapi.json().paths["/api/v1/tasks"].post.requestBody.content["application/json"].schema.$ref).toBe(
         "#/components/schemas/CreateTaskRequest"
@@ -34,6 +36,7 @@ describe("API", () => {
       expect(openapi.json().paths["/api/v1/tasks/{id}"].patch.requestBody.content["application/json"].example.status).toBe(
         "in_progress"
       );
+      expect(openapi.json().paths["/api/v1/tasks/{id}"].patch.requestBody.content["application/json"].example.urgency).toBe("critical");
       expect(
         openapi.json().paths["/api/v1/tasks/{id}/attachments/order"].patch.requestBody.content["application/json"].schema.$ref
       ).toBe("#/components/schemas/ReorderTaskAttachmentsRequest");
@@ -51,14 +54,16 @@ describe("API", () => {
       const task = await createTask(app, "Write spec", { deadline: { kind: "date", date: "2026-06-10" } });
       expect(task.id).toBe("1");
       expect(task.status).toBe("todo");
+      expect(task.urgency).toBe("medium");
       expect(task.deadline).toEqual({ kind: "date", date: "2026-06-10" });
 
       const patch = await app.inject({
         method: "PATCH",
         url: `/api/v1/tasks/${task.id}`,
-        payload: { status: "completed" }
+        payload: { status: "completed", urgency: "critical" }
       });
       expect(patch.statusCode).toBe(200);
+      expect(patch.json().urgency).toBe("critical");
       expect(patch.json().completedAt).toMatch(/Z$/);
       expect(patch.json().progress).toBe(1);
 
@@ -101,6 +106,26 @@ describe("API", () => {
       expect(list.statusCode).toBe(200);
       expect(list.json().items).toHaveLength(1);
       expect(list.json().items[0].status).toBe("wont_do");
+    });
+  });
+
+  it("supports task urgency values, filtering, and urgency sorting", async () => {
+    await withTestApp(async (app) => {
+      const low = await createTask(app, "Low urgency", { urgency: "low" });
+      const critical = await createTask(app, "Critical urgency", { urgency: "critical" });
+      const whenever = await createTask(app, "Whenever urgency", { urgency: "whenever" });
+
+      expect(low.urgency).toBe("low");
+      expect(critical.urgency).toBe("critical");
+      expect(whenever.urgency).toBe("whenever");
+
+      const filtered = await app.inject({ method: "GET", url: "/api/v1/tasks?urgency=critical" });
+      expect(filtered.statusCode).toBe(200);
+      expect(filtered.json().items.map((item: { id: string }) => item.id)).toEqual([critical.id]);
+
+      const sorted = await app.inject({ method: "GET", url: "/api/v1/tasks?sort=urgency_desc" });
+      expect(sorted.statusCode).toBe(200);
+      expect(sorted.json().items.map((item: { urgency: string }) => item.urgency)).toEqual(["critical", "low", "whenever"]);
     });
   });
 

@@ -59,6 +59,7 @@ export const openApiDocument = {
           title: "Renew passport",
           description: "Collect documents and submit renewal.",
           status: "todo",
+          urgency: "urgent",
           deadline: { kind: "date", date: "2026-06-30" },
           progressTracker: "manual",
           progress: 0.25,
@@ -72,6 +73,7 @@ export const openApiDocument = {
         summary: "List tasks",
         parameters: [
           { name: "status", in: "query", schema: { $ref: "#/components/schemas/TaskStatus" } },
+          { name: "urgency", in: "query", schema: { $ref: "#/components/schemas/TaskUrgency" } },
           { name: "parentTaskId", in: "query", schema: { type: "string" } },
           { name: "childTaskId", in: "query", schema: { type: "string" } },
           { name: "blockedByTaskId", in: "query", schema: { type: "string" } },
@@ -102,6 +104,7 @@ export const openApiDocument = {
         parameters: [pathId("id", "Task ID")],
         requestBody: requestBody({ $ref: "#/components/schemas/UpdateTaskRequest" }, {
           status: "in_progress",
+          urgency: "critical",
           progress: 0.5,
           deadline: { kind: "datetime", datetime: "2026-06-30T17:00:00.000Z" },
           blockedByTaskIds: ["2"]
@@ -245,17 +248,33 @@ export const openApiDocument = {
   components: {
     schemas: {
       TaskStatus: { enum: ["draft", "todo", "in_progress", "on_hold", "completed", "wont_do"] },
+      TaskUrgency: {
+        enum: ["critical", "urgent", "medium", "low", "whenever"],
+        description: "Task urgency in descending order: Critical, Urgent, Medium, Low, Whenever."
+      },
       ProgressTracker: { enum: ["computed_from_subtasks", "manual"] },
-      TaskSort: { enum: ["created_at_asc", "created_at_desc", "deadline_asc", "deadline_desc", "title_asc", "status_asc"] },
+      TaskSort: {
+        enum: [
+          "created_at_asc",
+          "created_at_desc",
+          "deadline_asc",
+          "deadline_desc",
+          "title_asc",
+          "status_asc",
+          "urgency_asc",
+          "urgency_desc"
+        ]
+      },
       EntityIdArray: { type: "array", items: { type: "string", minLength: 1 } },
       Task: {
         type: "object",
-        required: ["id", "title", "status", "createdAt", "attachments", "comments", "progressTracker", "progress"],
+        required: ["id", "title", "status", "urgency", "createdAt", "attachments", "comments", "progressTracker", "progress"],
         properties: {
           id: { type: "string" },
           title: { type: "string" },
           description: { type: "string" },
           status: { $ref: "#/components/schemas/TaskStatus" },
+          urgency: { $ref: "#/components/schemas/TaskUrgency" },
           createdAt: { type: "string", format: "date-time" },
           completedAt: { type: "string", format: "date-time" },
           deadline: { oneOf: [{ $ref: "#/components/schemas/DateDeadline" }, { $ref: "#/components/schemas/DateTimeDeadline" }] },
@@ -277,6 +296,7 @@ export const openApiDocument = {
           title: { type: "string", minLength: 1 },
           description: { type: "string" },
           status: { $ref: "#/components/schemas/TaskStatus", default: "todo" },
+          urgency: { $ref: "#/components/schemas/TaskUrgency", default: "medium" },
           deadline: { oneOf: [{ $ref: "#/components/schemas/DateDeadline" }, { $ref: "#/components/schemas/DateTimeDeadline" }] },
           progressTracker: { $ref: "#/components/schemas/ProgressTracker", default: "manual" },
           progress: { type: "number", minimum: 0, maximum: 1, default: 0 },
@@ -293,6 +313,7 @@ export const openApiDocument = {
           title: { type: "string", minLength: 1 },
           description: { type: ["string", "null"] },
           status: { $ref: "#/components/schemas/TaskStatus" },
+          urgency: { $ref: "#/components/schemas/TaskUrgency" },
           completedAt: { type: ["string", "null"], format: "date-time" },
           deadline: {
             oneOf: [{ $ref: "#/components/schemas/DateDeadline" }, { $ref: "#/components/schemas/DateTimeDeadline" }, { type: "null" }]

@@ -1,5 +1,5 @@
 import type { Database } from "./database.js";
-import type { Deadline, ProgressTracker, Task, TaskListQuery, TaskStatus } from "../domain/task.js";
+import type { Deadline, ProgressTracker, Task, TaskListQuery, TaskStatus, TaskUrgency } from "../domain/task.js";
 
 type SqlInput = string | number | null;
 
@@ -7,6 +7,7 @@ interface TaskUpdatePatch {
   title?: string;
   description?: string | null;
   status?: TaskStatus;
+  urgency?: TaskUrgency;
   completedAt?: string | null;
   deadline?: Deadline | null;
   progressTracker?: ProgressTracker;
@@ -19,6 +20,7 @@ interface TaskRow {
   title: string;
   description: string | null;
   status: TaskStatus;
+  urgency: TaskUrgency;
   created_at: string;
   completed_at: string | null;
   deadline_kind: "date" | "datetime" | null;
@@ -38,16 +40,17 @@ export class TaskRepository {
     this.database.db
       .prepare(
         `insert into tasks(
-          id, title, description, status, created_at, completed_at,
+          id, title, description, status, urgency, created_at, completed_at,
           deadline_kind, deadline_date, deadline_datetime,
           progress_tracker, progress, created_by, updated_at
-        ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         task.id,
         task.title,
         task.description ?? null,
         task.status,
+        task.urgency,
         task.createdAt,
         task.completedAt ?? null,
         deadline.kind,
@@ -70,6 +73,7 @@ export class TaskRepository {
     if ("title" in patch) add("title", patch.title);
     if ("description" in patch) add("description", patch.description ?? null);
     if ("status" in patch) add("status", patch.status);
+    if ("urgency" in patch) add("urgency", patch.urgency);
     if ("completedAt" in patch) add("completed_at", patch.completedAt ?? null);
     if ("deadline" in patch) {
       const deadline = this.toDeadlineColumns(patch.deadline ?? undefined);
@@ -107,6 +111,7 @@ export class TaskRepository {
       if (value !== undefined) values.push(value);
     };
     if (query.status) add("t.status = ?", query.status);
+    if (query.urgency) add("t.urgency = ?", query.urgency);
     if (query.parentTaskId) add("exists (select 1 from task_relationships r where r.parent_task_id = ? and r.child_task_id = t.id)", query.parentTaskId);
     if (query.childTaskId) add("exists (select 1 from task_relationships r where r.child_task_id = ? and r.parent_task_id = t.id)", query.childTaskId);
     if (query.blockedByTaskId) add("exists (select 1 from task_blocks b where b.blocking_task_id = ? and b.blocked_task_id = t.id)", query.blockedByTaskId);
@@ -125,13 +130,24 @@ export class TaskRepository {
     }
     if (query.cursor) add("t.id > ?", query.cursor);
 
+    const urgencyRank = `
+      case t.urgency
+        when 'critical' then 5
+        when 'urgent' then 4
+        when 'medium' then 3
+        when 'low' then 2
+        when 'whenever' then 1
+      end
+    `;
     const orderBy = {
       created_at_asc: "t.created_at asc, t.id asc",
       created_at_desc: "t.created_at desc, t.id asc",
       deadline_asc: "coalesce(t.deadline_datetime, t.deadline_date) asc, t.id asc",
       deadline_desc: "coalesce(t.deadline_datetime, t.deadline_date) desc, t.id asc",
       title_asc: "t.title asc, t.id asc",
-      status_asc: "t.status asc, t.id asc"
+      status_asc: "t.status asc, t.id asc",
+      urgency_asc: `${urgencyRank} asc, t.id asc`,
+      urgency_desc: `${urgencyRank} desc, t.id asc`
     }[query.sort];
 
     const limit = query.limit + 1;
@@ -221,6 +237,7 @@ export class TaskRepository {
       title: row.title,
       description: row.description ?? undefined,
       status: row.status,
+      urgency: row.urgency,
       createdAt: row.created_at,
       completedAt: row.completed_at ?? undefined,
       deadline: this.fromDeadlineColumns(row),
