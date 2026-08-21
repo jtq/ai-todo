@@ -12,6 +12,25 @@ async function createTask(app: FastifyInstance, title: string, body: Record<stri
   return response.json();
 }
 
+async function fetchPage(app: FastifyInstance, url: string, cursor?: string): Promise<{ ids: string[]; nextCursor?: string }> {
+  const query = cursor ? `${url}&cursor=${encodeURIComponent(cursor)}` : url;
+  const response = await app.inject({ method: "GET", url: query });
+  expect(response.statusCode).toBe(200);
+  const body = response.json();
+  return { ids: body.items.map((task: { id: string }) => task.id), nextCursor: body.nextCursor };
+}
+
+async function paginateAll(app: FastifyInstance, url: string): Promise<string[]> {
+  const ids: string[] = [];
+  let cursor: string | undefined;
+  do {
+    const page = await fetchPage(app, url, cursor);
+    ids.push(...page.ids);
+    cursor = page.nextCursor;
+  } while (cursor);
+  return ids;
+}
+
 describe("API", () => {
   it("serves health and OpenAPI", async () => {
     await withTestApp(async (app) => {
@@ -126,6 +145,71 @@ describe("API", () => {
       const sorted = await app.inject({ method: "GET", url: "/api/v1/tasks?sort=urgency_desc" });
       expect(sorted.statusCode).toBe(200);
       expect(sorted.json().items.map((item: { urgency: string }) => item.urgency)).toEqual(["critical", "low", "whenever"]);
+    });
+  });
+
+  describe("cursor pagination", () => {
+    const SORTS = [
+      "created_at_asc",
+      "created_at_desc",
+      "deadline_asc",
+      "deadline_desc",
+      "title_asc",
+      "status_asc",
+      "urgency_asc",
+      "urgency_desc"
+    ];
+
+    async function seedTasks(app: FastifyInstance): Promise<string[]> {
+      // Deliberately ties on every sort column (urgency, status, missing deadline) so pagination
+      // must fall back to the tiebreaker, plus a real spread of deadlines/titles for the rest.
+      const specs: [string, Record<string, unknown>][] = [
+        ["Bravo", { urgency: "medium", deadline: { kind: "date", date: "2026-01-10" } }],
+        ["alpha", { urgency: "critical" }],
+        ["Charlie", { urgency: "critical", deadline: { kind: "datetime", datetime: "2026-02-01T00:00:00.000Z" } }],
+        ["delta", { urgency: "low", deadline: { kind: "date", date: "2026-01-05" } }],
+        ["Echo", { urgency: "whenever" }],
+        ["foxtrot", { urgency: "urgent", deadline: { kind: "date", date: "2026-03-01" } }],
+        ["Golf", { urgency: "medium" }]
+      ];
+      const ids: string[] = [];
+      for (const [title, body] of specs) ids.push((await createTask(app, title, body)).id);
+      return ids;
+    }
+
+    it.each(SORTS)("retrieves every task exactly once across pages, in the same order as a single page, for sort=%s", async (sort) => {
+      await withTestApp(async (app) => {
+        const ids = await seedTasks(app);
+
+        const wholeList = await fetchPage(app, `/api/v1/tasks?limit=100&sort=${sort}`);
+        expect(wholeList.nextCursor).toBeUndefined();
+        expect(new Set(wholeList.ids)).toEqual(new Set(ids));
+
+        const paginated = await paginateAll(app, `/api/v1/tasks?limit=2&sort=${sort}`);
+        expect(paginated).toEqual(wholeList.ids);
+      });
+    });
+
+    it("rejects a cursor issued for a different sort", async () => {
+      await withTestApp(async (app) => {
+        await seedTasks(app);
+        const page = await fetchPage(app, "/api/v1/tasks?limit=2&sort=created_at_asc");
+        expect(page.nextCursor).toBeTruthy();
+
+        const response = await app.inject({
+          method: "GET",
+          url: `/api/v1/tasks?limit=2&sort=title_asc&cursor=${encodeURIComponent(page.nextCursor!)}`
+        });
+        expect(response.statusCode).toBe(400);
+      });
+    });
+
+    it("rejects a malformed cursor", async () => {
+      await withTestApp(async (app) => {
+        await seedTasks(app);
+        const response = await app.inject({ method: "GET", url: "/api/v1/tasks?limit=2&cursor=not-a-real-cursor" });
+        expect(response.statusCode).toBe(400);
+      });
     });
   });
 

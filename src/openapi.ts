@@ -84,7 +84,14 @@ export const openApiDocument = {
           { name: "createdAfter", in: "query", schema: { type: "string", format: "date-time" } },
           { name: "search", in: "query", schema: { type: "string" } },
           { name: "limit", in: "query", schema: { type: "integer", minimum: 1, maximum: 100, default: 50 } },
-          { name: "cursor", in: "query", schema: { type: "string" } },
+          {
+            name: "cursor",
+            in: "query",
+            description:
+              "Opaque pagination token copied from a previous response's `nextCursor`. Do not construct or parse it. " +
+              "It is only valid for the `sort` value it was issued under; reusing it with a different `sort` returns 400.",
+            schema: { type: "string" }
+          },
           { name: "sort", in: "query", schema: { $ref: "#/components/schemas/TaskSort" } }
         ],
         responses: {
@@ -409,7 +416,10 @@ export const openApiDocument = {
         required: ["items"],
         properties: {
           items: { type: "array", items: taskRef },
-          nextCursor: { type: "string" }
+          nextCursor: {
+            type: "string",
+            description: "Opaque token for the next page; absent when there are no more results. Pass back verbatim as `cursor`."
+          }
         }
       },
       DateDeadline: {

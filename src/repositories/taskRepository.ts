@@ -1,7 +1,69 @@
 import type { Database } from "./database.js";
-import type { Deadline, ProgressTracker, Task, TaskListQuery, TaskStatus, TaskUrgency } from "../domain/task.js";
+import { encodeTaskCursor, type TaskCursor } from "../domain/cursor.js";
+import type { Deadline, ProgressTracker, Task, TaskListQuery, TaskSort, TaskStatus, TaskUrgency } from "../domain/task.js";
 
 type SqlInput = string | number | null;
+
+const URGENCY_RANK = `
+  case t.urgency
+    when 'critical' then 5
+    when 'urgent' then 4
+    when 'medium' then 3
+    when 'low' then 2
+    when 'whenever' then 1
+  end
+`;
+
+/**
+ * Per-sort keyset pagination metadata. `keyExpr` is the SQL expression that both the ORDER BY
+ * and the cursor comparison are built from, so a page's ordering and its pagination filter can
+ * never drift apart the way the old `t.id > ?` cursor did for every sort but one.
+ */
+const SORT_SPECS: Record<TaskSort, { keyExpr: string; direction: "asc" | "desc"; nullable: boolean }> = {
+  created_at_asc: { keyExpr: "t.created_at", direction: "asc", nullable: false },
+  created_at_desc: { keyExpr: "t.created_at", direction: "desc", nullable: false },
+  deadline_asc: { keyExpr: "coalesce(t.deadline_datetime, t.deadline_date)", direction: "asc", nullable: true },
+  deadline_desc: { keyExpr: "coalesce(t.deadline_datetime, t.deadline_date)", direction: "desc", nullable: true },
+  title_asc: { keyExpr: "t.title", direction: "asc", nullable: false },
+  status_asc: { keyExpr: "t.status", direction: "asc", nullable: false },
+  urgency_asc: { keyExpr: URGENCY_RANK, direction: "asc", nullable: false },
+  urgency_desc: { keyExpr: URGENCY_RANK, direction: "desc", nullable: false }
+};
+
+/**
+ * Builds the `(sort key, tiebreaker)` tuple comparison for "rows strictly after this cursor's
+ * position in this sort," matching the NULLS FIRST/LAST convention applied to the ORDER BY below.
+ * `entities.sequence_value` (a real monotonic integer) is used as the tiebreaker rather than the
+ * task id, since unpadded base62 ids don't compare correctly once their length changes (e.g. the
+ * string "9" sorts after "10" even though 9 < 62).
+ */
+function keysetPredicate(spec: (typeof SORT_SPECS)[TaskSort], cursor: TaskCursor): { sql: string; values: SqlInput[] } {
+  const { keyExpr, direction, nullable } = spec;
+  const cmp = direction === "asc" ? ">" : "<";
+
+  if (!nullable) {
+    return {
+      sql: `(${keyExpr} ${cmp} ? or (${keyExpr} = ? and e.sequence_value > ?))`,
+      values: [cursor.key, cursor.key, cursor.seq]
+    };
+  }
+
+  const nullsFirst = direction === "asc";
+  if (cursor.key === null) {
+    return nullsFirst
+      ? { sql: `((${keyExpr} is null and e.sequence_value > ?) or ${keyExpr} is not null)`, values: [cursor.seq] }
+      : { sql: `(${keyExpr} is null and e.sequence_value > ?)`, values: [cursor.seq] };
+  }
+  return nullsFirst
+    ? {
+        sql: `(${keyExpr} is not null and (${keyExpr} ${cmp} ? or (${keyExpr} = ? and e.sequence_value > ?)))`,
+        values: [cursor.key, cursor.key, cursor.seq]
+      }
+    : {
+        sql: `((${keyExpr} is not null and (${keyExpr} ${cmp} ? or (${keyExpr} = ? and e.sequence_value > ?))) or ${keyExpr} is null)`,
+        values: [cursor.key, cursor.key, cursor.seq]
+      };
+}
 
 interface TaskUpdatePatch {
   title?: string;
@@ -103,12 +165,17 @@ export class TaskRepository {
     return Boolean(row);
   }
 
-  list(query: TaskListQuery): { items: Task[]; nextCursor?: string } {
+  /**
+   * `cursor`, if present, must already be decoded and validated against `query.sort` by the
+   * caller (see TaskService.list) — this method trusts it encodes a position in exactly the
+   * ordering `query.sort` produces.
+   */
+  list(query: TaskListQuery, cursor?: TaskCursor): { items: Task[]; nextCursor?: string } {
     const where: string[] = [];
     const values: SqlInput[] = [];
-    const add = (sql: string, value?: SqlInput): void => {
+    const add = (sql: string, ...vals: SqlInput[]): void => {
       where.push(sql);
-      if (value !== undefined) values.push(value);
+      values.push(...vals);
     };
     if (query.status) add("t.status = ?", query.status);
     if (query.urgency) add("t.urgency = ?", query.urgency);
@@ -128,34 +195,35 @@ export class TaskRepository {
       values.push(`%${query.search}%`, `%${query.search}%`);
       where.push("(t.title like ? or t.description like ?)");
     }
-    if (query.cursor) add("t.id > ?", query.cursor);
 
-    const urgencyRank = `
-      case t.urgency
-        when 'critical' then 5
-        when 'urgent' then 4
-        when 'medium' then 3
-        when 'low' then 2
-        when 'whenever' then 1
-      end
-    `;
-    const orderBy = {
-      created_at_asc: "t.created_at asc, t.id asc",
-      created_at_desc: "t.created_at desc, t.id asc",
-      deadline_asc: "coalesce(t.deadline_datetime, t.deadline_date) asc, t.id asc",
-      deadline_desc: "coalesce(t.deadline_datetime, t.deadline_date) desc, t.id asc",
-      title_asc: "t.title asc, t.id asc",
-      status_asc: "t.status asc, t.id asc",
-      urgency_asc: `${urgencyRank} asc, t.id asc`,
-      urgency_desc: `${urgencyRank} desc, t.id asc`
-    }[query.sort];
+    const spec = SORT_SPECS[query.sort];
+    if (cursor) {
+      const predicate = keysetPredicate(spec, cursor);
+      add(predicate.sql, ...predicate.values);
+    }
+
+    const nulls = spec.nullable ? (spec.direction === "asc" ? " nulls first" : " nulls last") : "";
+    const orderBy = `${spec.keyExpr} ${spec.direction}${nulls}, e.sequence_value asc`;
 
     const limit = query.limit + 1;
-    const sql = `select t.* from tasks t ${where.length ? `where ${where.join(" and ")}` : ""} order by ${orderBy} limit ?`;
-    const rows = this.database.db.prepare(sql).all(...values, limit) as unknown as TaskRow[];
+    const sql = `
+      select t.*, e.sequence_value as seq, (${spec.keyExpr}) as sort_key
+      from tasks t
+      join entities e on e.id = t.id
+      ${where.length ? `where ${where.join(" and ")}` : ""}
+      order by ${orderBy}
+      limit ?
+    `;
+    const rows = this.database.db.prepare(sql).all(...values, limit) as unknown as (TaskRow & {
+      seq: number;
+      sort_key: string | number | null;
+    })[];
     const hasMore = rows.length > query.limit;
-    const items = rows.slice(0, query.limit).map((row) => this.hydrate(row));
-    return { items, nextCursor: hasMore ? items.at(-1)?.id : undefined };
+    const page = rows.slice(0, query.limit);
+    const items = page.map((row) => this.hydrate(row));
+    const last = page.at(-1);
+    const nextCursor = hasMore && last ? encodeTaskCursor({ sort: query.sort, key: last.sort_key, seq: last.seq }) : undefined;
+    return { items, nextCursor };
   }
 
   addRelationship(parentTaskId: string, childTaskId: string): void {
