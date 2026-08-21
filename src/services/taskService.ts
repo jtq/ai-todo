@@ -1,5 +1,6 @@
-import { conflict, notFound, validationError } from "../domain/errors.js";
+import { badRequest, conflict, notFound, validationError } from "../domain/errors.js";
 import { nowUtc } from "../domain/datetime.js";
+import { decodeTaskCursor } from "../domain/cursor.js";
 import type { CreateTaskInput, Task, TaskListQuery, UpdateTaskInput } from "../domain/task.js";
 import type { Database } from "../repositories/database.js";
 import type { IdRepository } from "../repositories/idRepository.js";
@@ -49,7 +50,14 @@ export class TaskService {
   }
 
   list(query: TaskListQuery): { items: Task[]; nextCursor?: string } {
-    return this.tasks.list(query);
+    if (!query.cursor) return this.tasks.list(query);
+
+    const cursor = decodeTaskCursor(query.cursor);
+    if (!cursor) throw badRequest("cursor is invalid or malformed");
+    if (cursor.sort !== query.sort) {
+      throw badRequest("cursor was issued for a different sort; repeat pagination using the same sort as the initial request");
+    }
+    return this.tasks.list(query, cursor);
   }
 
   get(id: string): Task {

@@ -355,7 +355,14 @@ Repository responsibilities:
 - Create, update, and delete table records.
 - Rely on relational constraints for referential integrity where possible.
 - Perform relationship updates atomically in transactions.
-- Provide cursor-based list operations.
+- Provide keyset (cursor-based) list operations. The pagination predicate must be derived from the
+  same column(s) and direction as the requested `sort` — a cursor is only meaningful against the
+  exact ordering it was produced under. Filtering on one column (e.g. `id`) while ordering by
+  another (e.g. `created_at desc`) is not equivalent keyset pagination: it silently re-serves rows
+  already returned on an earlier page and permanently skips others. Tiebreak on a real
+  monotonically increasing key such as `entities.sequence_value`, not the base62 task `id` string —
+  unpadded base62 values do not compare correctly once their length changes (e.g. `"9"` sorts after
+  `"10"` lexicographically even though 9 < 62).
 - Hide database-specific details from services and route handlers.
 
 ## 8. Public API
@@ -451,6 +458,21 @@ status_asc
 urgency_asc
 urgency_desc
 ```
+
+Cursor pagination contract:
+
+- `cursor` is an opaque token. Clients must treat it as a black box and only ever pass back the
+  exact value most recently returned in `nextCursor` — never construct, parse, or infer one (e.g.
+  it must not be assumed to be a task `id`).
+- A cursor is scoped to the `sort` it was issued under. A request combining a cursor with a
+  different `sort` than the one that produced it must be rejected with `400`, not silently
+  misapplied. A cursor that fails to decode must also be rejected with `400`.
+- `nextCursor` is present only when more results remain and is omitted (not `null`) on the final
+  page.
+- Paginating through every page for a given `sort`/filter combination must return each matching
+  task exactly once, in the same order a single unpaginated request with that `sort` would produce
+  — no duplicates and no gaps — including when many rows tie on the sort column (e.g. shared
+  `urgency`, `status`, or missing `deadline`).
 
 ### 8.3 Task Relationships
 
@@ -569,6 +591,8 @@ Validation failures should return `422`.
 Relationship conflicts, such as cycles or self-blocking, should return `409`.
 
 Missing entities should return `404`.
+
+A malformed pagination cursor, or a cursor combined with a `sort` other than the one it was issued under, should return `400`.
 
 Datetime validation requirements:
 

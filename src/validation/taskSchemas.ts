@@ -2,6 +2,7 @@ import { z } from "zod";
 import {
   deadlineSchema,
   entityIdSchema,
+  opaqueCursorSchema,
   progressTrackerSchema,
   taskUrgencySchema,
   taskStatusSchema,
@@ -73,7 +74,7 @@ export const listTasksQuerySchema = z
     createdAfter: utcDateTimeSchema.optional(),
     search: z.string().optional(),
     limit: z.coerce.number().int().min(1).max(100).default(50),
-    cursor: entityIdSchema.optional(),
+    cursor: opaqueCursorSchema.optional(),
     sort: z
       .enum([
         "created_at_asc",

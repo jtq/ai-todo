@@ -53,6 +53,16 @@ export interface UpdateTaskInput {
   blockedByTaskIds?: EntityId[];
 }
 
+export type TaskSort =
+  | "created_at_asc"
+  | "created_at_desc"
+  | "deadline_asc"
+  | "deadline_desc"
+  | "title_asc"
+  | "status_asc"
+  | "urgency_asc"
+  | "urgency_desc";
+
 export interface TaskListQuery {
   status?: TaskStatus;
   urgency?: TaskUrgency;
@@ -66,14 +76,7 @@ export interface TaskListQuery {
   createdAfter?: string;
   search?: string;
   limit: number;
-  cursor?: EntityId;
-  sort:
-    | "created_at_asc"
-    | "created_at_desc"
-    | "deadline_asc"
-    | "deadline_desc"
-    | "title_asc"
-    | "status_asc"
-    | "urgency_asc"
-    | "urgency_desc";
+  /** Opaque pagination token from a previous list response's `nextCursor`. Callers must not construct or parse it. */
+  cursor?: string;
+  sort: TaskSort;
 }
